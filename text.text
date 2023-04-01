@@ -1,0 +1,179 @@
+require('dotenv').config();
+
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const mysql = require('mysql2');
+const { urlencoded } = require('express');
+
+const app = express();
+
+app.use(express.json());
+app.use(urlencoded({extended:true}));
+
+const connection = mysql.createConnection({
+    host: '127.0.0.1',
+    user:'root',
+    password: 'abcd@123',
+    database: 'new'
+});
+
+connection.connect((err)=>{
+    if(err) {
+        console.log('connection err')
+        throw err;
+    };
+    console.log('connected');
+});
+
+app.get('/details',[authorizationToken], (req,res)=>{
+
+    const query = `SELECT * FROM users`;
+    try{
+        connection.query(query, (err,row)=>{
+            if(err){console.log('err',err)}
+            else {res.send(row)}
+        });
+    }catch{
+        console.log(e);
+    }
+});
+
+// try{
+//     const createTable = `
+//         CREATE TABLE users(id INT PRIMARY KEY NOT NULL AUTO_INCREMENT, username VARCHAR(50) NOT NULL, password VARCHAR(255) NOT NULL, name VARCHAR(50) NOT NULL);
+//     `;
+//     connection.query(createTable, (err, result)=>{
+//         if(err) {
+//             console.log('table creationn err')
+//             throw err;
+//     }
+//         console.log(result,'created');
+//     })
+// }catch(e){
+//     console.log(e);
+// }
+
+app.get('/register',(req,res)=>{
+    console.log(req.method)
+    console.log(req.url)
+    return res.send(`
+        <form method="post" action="/register">
+            <input type="email" name="email" placeholder="Email" required />
+            <input type="password" name="password" placeholder="Password" required />
+            <input type="text" name="name" placeholder="first name" required />       
+            <button type="submit">Register</button>
+        </form>
+    `)
+})
+
+app.get('/login',(req,res)=>{
+    console.log(req.method)
+    console.log(req.url)
+    return res.send(`
+        <form method="post" action="/login">
+            <input type="email" name="email" placeholder="Email" required />
+            <input type="password" name="password" placeholder="Password" required />
+            <input type="text" name="name" placeholder="first name" required />       
+            <button type="submit">login</button>
+        </form>
+    `)
+})
+
+app.post('/register', async (req,res)=>{
+    console.log('making requrest')
+    console.log(req.body);
+    //const id = req.body.id;
+    const username = req.body.email;
+    const password = req.body.password;
+    const name = req.body.name
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password,salt);
+
+    const userData = [username, hash, name];
+    const consoleUserData = [username, password, name];
+    
+    const query = `SELECT username FROM users WHERE username=?`;
+    
+    connection.query(query,[username], (err,rows,fields)=>{
+        console.log(rows);
+        
+        if(rows.length==0 || rows[0].username!=username){
+                const query = `INSERT INTO users(username, password, name) VALUES(?)`
+                connection.query(query,[userData],(err,row)=>{
+                if(err){console.log('err',err)}
+                else {
+                    res.send(row)
+                    console.log(consoleUserData);
+                }
+            })
+        }else{
+                res.send("user exists");
+        }
+    })
+});
+
+app.post('/login', (req,res)=>{
+    console.log("req",req.body);
+    const username = req.body.username;
+    const password = req.body.password;
+    const name = req.body.name;
+
+    const consoleUserData = [username];
+    console.log(username)
+    const query = `SELECT username,password FROM users WHERE username=?`;
+    connection.query(query,[...consoleUserData], (err,rows,fields)=>{
+        console.log(rows);
+        if(err){
+            console.log('this',err);
+        }else{
+            if(rows.length === 0 || rows[0].username!=username){
+                res.send("user not found");
+            }else{
+                if(bcrypt.compare(rows[0].password,password)){
+                    const accessToken = jwt.sign(rows[0].password, process.env.ACCESS_SECRET_TOKEN);
+                    console.log({accessToken:accessToken});
+                    res.redirect('/details');
+                }else{
+                    res.send("c");
+                }
+            }
+        }
+    })
+})
+
+function authorizationToken(req, res, next){    
+    //console.log(req.headers['authorization']);
+    try{
+        const authHeader = req.headers['authorization'];
+        //console.log(authHeader.startsWith('Bearer '))
+        if (!authHeader.startsWith('Bearer ')) {
+            return res.sendStatus(401);
+        }
+        const token = authHeader && authHeader.split(' ')[1];
+        console.log(token);
+        //console.log('hjjjj');
+        if(token == null) return res.status(401);
+        
+        jwt.verify(token, process.env.ACCESS_SECRET_TOKEN, (err, user)=>{ 
+            if(err) return res.status(401);
+            console.log(user);
+            req.user= user;
+            next();
+        })
+    }catch(e){
+        console.log(e.message);
+    }
+    
+}
+app.listen(3202);
+
+{
+    "first_name":"test1", 
+    "last_name":"test1", 
+    "email":"test1@test.com", 
+    "password":"test1234", 
+    "gender":"male", 
+    "number":"1231231233"
+}
